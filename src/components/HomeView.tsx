@@ -7,6 +7,8 @@ import {
   Trash2,
   Bug,
   HelpCircle,
+  Wrench,
+  Car,
   Plus,
   ArrowRight,
   Clock,
@@ -14,17 +16,21 @@ import {
   Sparkles,
   PhoneCall,
   ChevronRight,
-  TrendingUp,
+  Loader2,
 } from 'lucide-react';
 import { Language, ReportCategory, Ticket } from '../types';
 import { getTranslation } from '../i18n';
 import { KKU_EMERGENCY_CONTACTS } from '../constants/emergencyContacts';
 import { EmergencyContactsModal } from './EmergencyContactsModal';
+import {
+  ENVIRONMENTAL_CATEGORIES,
+  EnvironmentalCategoryConfig,
+} from '../constants/categories';
 
 interface HomeViewProps {
   lang: Language;
   tickets: Ticket[];
-  onOpenReportWizard: (cat?: ReportCategory) => void;
+  onOpenReportWizard: (cat?: ReportCategory, subIdOrCode?: string) => void;
   onNavigateToTrack: (ticketId: string) => void;
   onNavigateToDashboard: () => void;
   onDeleteTicket?: (ticketId: string) => void;
@@ -40,72 +46,43 @@ export const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const t = getTranslation(lang);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState<boolean>(false);
+  const [selectedCategory, setSelectedCategory] = useState<ReportCategory>('infrastructure_utilities');
+  const [navigatingSubId, setNavigatingSubId] = useState<string | null>(null);
 
-  const categories: Array<{
-    id: ReportCategory;
-    title: string;
-    sub: string;
-    icon: React.ReactNode;
-    color: string;
-    bg: string;
-  }> = [
-    {
-      id: 'water',
-      title: t.catWater,
-      sub: t.subWater,
-      icon: <Droplets className="w-6 h-6" />,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50 hover:bg-blue-100 border-blue-200',
-    },
-    {
-      id: 'air',
-      title: t.catAir,
-      sub: t.subAir,
-      icon: <Wind className="w-6 h-6" />,
-      color: 'text-sky-600',
-      bg: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
-    },
-    {
-      id: 'noise',
-      title: t.catNoise,
-      sub: t.subNoise,
-      icon: <Volume2 className="w-6 h-6" />,
-      color: 'text-purple-600',
-      bg: 'bg-purple-50 hover:bg-purple-100 border-purple-200',
-    },
-    {
-      id: 'odor',
-      title: t.catOdor,
-      sub: t.subOdor,
-      icon: <Biohazard className="w-6 h-6" />,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',
-    },
-    {
-      id: 'waste',
-      title: t.catWaste,
-      sub: t.subWaste,
-      icon: <Trash2 className="w-6 h-6" />,
-      color: 'text-emerald-600',
-      bg: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
-    },
-    {
-      id: 'vector',
-      title: t.catVector,
-      sub: t.subVector,
-      icon: <Bug className="w-6 h-6" />,
-      color: 'text-rose-600',
-      bg: 'bg-rose-50 hover:bg-rose-100 border-rose-200',
-    },
-    {
-      id: 'others',
-      title: t.catOthers,
-      sub: t.subOthers,
-      icon: <HelpCircle className="w-6 h-6" />,
-      color: 'text-slate-600',
-      bg: 'bg-slate-50 hover:bg-slate-100 border-slate-200',
-    },
-  ];
+  const getCategoryIcon = (iconName: string, className: string = 'w-5 h-5') => {
+    switch (iconName) {
+      case 'wrench':
+        return <Wrench className={className} />;
+      case 'car':
+        return <Car className={className} />;
+      case 'droplets':
+        return <Droplets className={className} />;
+      case 'wind':
+        return <Wind className={className} />;
+      case 'volume2':
+        return <Volume2 className={className} />;
+      case 'biohazard':
+        return <Biohazard className={className} />;
+      case 'trash2':
+        return <Trash2 className={className} />;
+      case 'bug':
+        return <Bug className={className} />;
+      default:
+        return <HelpCircle className={className} />;
+    }
+  };
+
+  const handleSelectSubcategory = (catId: ReportCategory, subIdOrCode: string) => {
+    setNavigatingSubId(subIdOrCode);
+    setTimeout(() => {
+      onOpenReportWizard(catId, subIdOrCode);
+      setNavigatingSubId(null);
+    }, 150);
+  };
+
+  const activeCategoryConfig =
+    ENVIRONMENTAL_CATEGORIES.find((c) => c.id === selectedCategory) ||
+    ENVIRONMENTAL_CATEGORIES[0];
 
   const totalReports = tickets.length;
   const resolvedReports = tickets.filter((tk) => tk.status === 'resolved').length;
@@ -166,37 +143,171 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Note: Search box has been intentionally removed from Home page as mandated by Requirement 1.1 */}
 
-      {/* Categories Grid */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base md:text-lg font-bold text-slate-900">
-            {lang === 'th' ? 'หมวดหมู่การแจ้งเหตุสิ่งแวดล้อม' : 'Incident Categories'}
-          </h2>
-          <span className="text-xs text-slate-500">
-            {lang === 'th' ? 'เลือกประเภทเพื่อแจ้งเหตุทันที' : 'Tap category to report'}
+      {/* Categories & Subcategories Selector */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
+          <div>
+            <h2 className="text-base md:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+              <span>{lang === 'th' ? 'หมวดหมู่การแจ้งเหตุสิ่งแวดล้อม' : 'Incident Categories'}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {lang === 'th'
+                ? 'เลือกประเภทเพื่อแจ้งเหตุทันที หรือแตะประเภทย่อยเพื่อเปิดแบบฟอร์มพร้อมบันทึกประเภทโดยอัตโนมัติ'
+                : 'Select a category or tap any subcategory to jump directly to reporting'}
+            </p>
+          </div>
+          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 self-start sm:self-auto">
+            {lang === 'th' ? '⚡ ทางลัดแจ้งเหตุด่วน' : '⚡ Quick Report Shortcut'}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => onOpenReportWizard(cat.id)}
-              className={`p-4 rounded-2xl border text-left transition-all cursor-pointer shadow-sm ${cat.bg} group flex flex-col justify-between h-36`}
-            >
-              <div className="flex items-center justify-between">
-                <div className={`p-2.5 rounded-xl bg-white shadow-sm ${cat.color}`}>
-                  {cat.icon}
+        {/* Primary Categories Grid/Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          {ENVIRONMENTAL_CATEGORIES.map((cat) => {
+            const isSelected = cat.id === selectedCategory;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`p-3 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex items-center gap-3 relative ${
+                  isSelected
+                    ? `${cat.activeBorder} ${cat.activeBg} shadow-sm ring-2 ring-emerald-500/20`
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/80 shadow-xs'
+                }`}
+              >
+                <div
+                  className={`p-2 rounded-xl shrink-0 transition-transform ${
+                    isSelected ? `${cat.badgeBg} ${cat.badgeColor} scale-105` : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {getCategoryIcon(cat.iconName, 'w-5 h-5')}
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </div>
+                <div className="min-w-0 flex-1">
+                  <h3
+                    className={`text-xs md:text-sm font-bold truncate ${
+                      isSelected ? 'text-slate-900 font-extrabold' : 'text-slate-700'
+                    }`}
+                  >
+                    {lang === 'th' ? cat.name : cat.nameEn}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {cat.subcategories.length}{' '}
+                    {lang === 'th' ? 'ประเภทย่อย' : 'subcategories'}
+                  </p>
+                </div>
+                {isSelected && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-              <div>
-                <h3 className="text-xs md:text-sm font-bold text-slate-900 line-clamp-1">{cat.title}</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{cat.sub}</p>
+        {/* Active Category & Subcategories Details Container */}
+        <div
+          className={`p-4 md:p-6 rounded-3xl border ${activeCategoryConfig.activeBorder} ${activeCategoryConfig.activeBg} transition-all duration-200 space-y-4 shadow-sm`}
+        >
+          {/* Active Category Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/80">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-3 rounded-2xl bg-white shadow-xs ${activeCategoryConfig.badgeColor}`}
+              >
+                {getCategoryIcon(activeCategoryConfig.iconName, 'w-6 h-6')}
               </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm md:text-base font-extrabold text-slate-900">
+                    {lang === 'th' ? activeCategoryConfig.name : activeCategoryConfig.nameEn}
+                  </h3>
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/80 text-slate-600 border border-slate-200">
+                    {lang === 'th' ? activeCategoryConfig.nameEn : activeCategoryConfig.name}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  {lang === 'th' ? activeCategoryConfig.descTh : activeCategoryConfig.descEn}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onOpenReportWizard(activeCategoryConfig.id)}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors shadow-xs cursor-pointer self-start md:self-auto shrink-0"
+            >
+              <span>{lang === 'th' ? 'แจ้งเหตุทั่วไปในหมวดนี้' : 'General Report in this category'}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
             </button>
-          ))}
+          </div>
+
+          {/* Subcategories Section Header */}
+          <div>
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                {lang === 'th'
+                  ? 'แตะประเภทย่อยเพื่อแจ้งเหตุทันที (Fast Action):'
+                  : 'Tap a subcategory to report immediately:'}
+              </span>
+              <span className="text-[11px] text-slate-500 hidden sm:inline">
+                {lang === 'th'
+                  ? 'ระบบจะเลือกหมวดหมู่ให้โดยอัตโนมัติในหน้าแจ้งเหตุ'
+                  : 'Pre-filled automatically in report form'}
+              </span>
+            </div>
+
+            {/* Subcategories Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {activeCategoryConfig.subcategories.map((sub) => {
+                const isNavigating = navigatingSubId === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    disabled={isNavigating}
+                    onClick={() => handleSelectSubcategory(activeCategoryConfig.id, sub.id)}
+                    className={`p-4 rounded-2xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between min-h-[110px] bg-white hover:bg-emerald-50/40 hover:border-emerald-400 group shadow-xs hover:shadow-md relative transform active:scale-[0.98] ${
+                      isNavigating ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-slate-200'
+                    }`}
+                  >
+                    <div>
+                      <div>
+                        <h4 className="text-xs md:text-sm font-bold text-slate-900 group-hover:text-emerald-800 transition-colors">
+                          {lang === 'th' ? sub.name : sub.nameEn}
+                        </h4>
+                        <span className="text-[11px] text-slate-400 block mt-0.5 font-medium">
+                          {lang === 'th' ? sub.nameEn : sub.name}
+                        </span>
+                      </div>
+
+                      {sub.exampleTh && (
+                        <p className="text-[11px] text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                          {lang === 'th' ? sub.exampleTh : sub.exampleEn || sub.exampleTh}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="pt-3 mt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      <span className="text-[11px] font-semibold text-emerald-700 group-hover:text-emerald-800 flex items-center gap-1">
+                        {isNavigating ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                            <span>{lang === 'th' ? 'กำลังเปิดหน้าแจ้งเหตุ...' : 'Opening report form...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{lang === 'th' ? 'แจ้งเหตุประเภทนี้' : 'Report this issue'}</span>
+                            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

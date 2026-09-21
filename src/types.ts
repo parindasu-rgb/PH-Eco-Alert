@@ -175,6 +175,10 @@ export interface Ticket {
   aiAnalysis?: AIAnalysisResult;
   actionPhotos?: ActionPhoto[];
   actionUpdates?: ActionUpdate[];
+  line_notification_status?: 'pending' | 'sent' | 'failed';
+  line_notification_sent_at?: string;
+  line_notification_error?: string;
+  line_retry_count?: number;
 }
 
 export interface UserProfile {

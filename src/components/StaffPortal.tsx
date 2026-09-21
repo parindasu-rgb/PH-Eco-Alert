@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download,
   RotateCcw,
@@ -29,6 +29,8 @@ import {
   MapPin,
   Tag,
   Check,
+  Bell,
+  Send,
 } from 'lucide-react';
 import {
   ActionPhoto,
@@ -101,6 +103,46 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
   const [newPhotoUrl, setNewPhotoUrl] = useState<string>('');
   const [newPhotoDesc, setNewPhotoDesc] = useState<string>('');
   const [isAddingPhoto, setIsAddingPhoto] = useState<boolean>(false);
+
+  // LINE Official Account Integration Diagnostics & Retry State
+  const [lineConfig, setLineConfig] = useState<{
+    hasChannelAccessToken: boolean;
+    hasChannelSecret: boolean;
+    hasStaffGroupId: boolean;
+    staffGroupIdMasked: string | null;
+    isFullyConfigured: boolean;
+    channelType?: string;
+  } | null>(null);
+  const [isRetryingLine, setIsRetryingLine] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/line/config-status')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setLineConfig(data);
+      })
+      .catch((err) => console.warn('Could not load LINE OA configuration status:', err));
+  }, []);
+
+  const handleRetryLine = async (ticketId: string) => {
+    setIsRetryingLine(ticketId);
+    try {
+      const res = await fetch(`/api/reports/${ticketId}/retry-line`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.report) {
+        onUpdateTicket(data.report);
+        if (viewingTicket && viewingTicket.id === ticketId) {
+          setViewingTicket(data.report);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to retry LINE notification:', err);
+    } finally {
+      setIsRetryingLine(null);
+    }
+  };
 
   // Verification Form Handlers
   const handleVerifyStaff = (e?: React.FormEvent) => {
@@ -569,6 +611,43 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
         </div>
       </div>
 
+      {/* LINE OA Integration Status Banner */}
+      <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Bell className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <strong className="text-slate-900 text-sm font-bold">
+                {lang === 'th' ? 'ระบบแจ้งเตือน LINE Official Account เจ้าหน้าที่' : 'LINE OA Staff Notification'}
+              </strong>
+              {lineConfig?.isFullyConfigured ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  {lang === 'th' ? 'เชื่อมต่อพร้อมใช้งาน' : 'Connected'}
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                  {lang === 'th' ? 'รอการตั้งค่า LINE Credentials' : 'Configuration Pending'}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              {lineConfig?.isFullyConfigured
+                ? `${lang === 'th' ? 'ส่งการแจ้งเตือนอัตโนมัติเข้ากลุ่มเจ้าหน้าที่:' : 'Forwarding new reports automatically to group:'} ${lineConfig.staffGroupIdMasked || 'Group'}`
+                : lang === 'th'
+                ? 'ระบบจะส่งข้อความแจ้งเตือนทันทีเมื่อมีผู้ส่งแบบแจ้งเหตุใหม่ (สามารถกำหนด LINE_CHANNEL_ACCESS_TOKEN และ LINE_STAFF_GROUP_ID ใน Environment Variables)'
+                : 'Configurable via LINE_CHANNEL_ACCESS_TOKEN and LINE_STAFF_GROUP_ID environment variables.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-slate-500 font-mono bg-white px-3 py-1.5 rounded-xl border border-emerald-200 self-start md:self-auto">
+          <span>Webhook: <strong>/api/line/webhook</strong></span>
+        </div>
+      </div>
+
       {/* ==================================================== */}
       {/* Requirement 5: Dashboard สำหรับเจ้าหน้าที่ (Summary Cards) */}
       {/* ==================================================== */}
@@ -751,6 +830,7 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
                   <th className="p-4">{lang === 'th' ? 'ประเภทเหตุ' : 'Category'}</th>
                   <th className="p-4">{lang === 'th' ? 'รายละเอียด' : 'Incident Details'}</th>
                   <th className="p-4">{lang === 'th' ? 'สถานะ' : 'Status'}</th>
+                  <th className="p-4">{lang === 'th' ? 'การแจ้งเตือน LINE' : 'LINE OA'}</th>
                   <th className="p-4">{lang === 'th' ? 'วันที่อัปเดตล่าสุด' : 'Last Updated'}</th>
                   <th className="p-4 text-right">{lang === 'th' ? 'การจัดการ' : 'Actions'}</th>
                 </tr>
@@ -795,6 +875,44 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
 
                       {/* สถานะ */}
                       <td className="p-4 whitespace-nowrap">{getStatusBadge(tk.status)}</td>
+
+                      {/* การแจ้งเตือน LINE OA */}
+                      <td className="p-4 whitespace-nowrap">
+                        {tk.line_notification_status === 'sent' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span>{lang === 'th' ? 'ส่งแล้ว' : 'Sent'}</span>
+                          </span>
+                        ) : tk.line_notification_status === 'failed' ? (
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200"
+                              title={tk.line_notification_error || 'ส่ง LINE ไม่สำเร็จ'}
+                            >
+                              <XCircle className="w-3 h-3 text-rose-600" />
+                              <span>{lang === 'th' ? 'ไม่สำเร็จ' : 'Failed'}</span>
+                            </span>
+                            <button
+                              type="button"
+                              disabled={isRetryingLine === tk.id}
+                              onClick={() => handleRetryLine(tk.id)}
+                              className="px-2 py-0.5 text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                              title={lang === 'th' ? 'ส่งการแจ้งเตือน LINE ซ้ำ' : 'Retry LINE Notification'}
+                            >
+                              {isRetryingLine === tk.id ? (
+                                <RotateCcw className="w-2.5 h-2.5 animate-spin" />
+                              ) : (
+                                <span>{lang === 'th' ? 'ส่งซ้ำ' : 'Retry'}</span>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            <Clock className="w-3 h-3" />
+                            <span>{lang === 'th' ? 'รอดำเนินการ' : 'Pending'}</span>
+                          </span>
+                        )}
+                      </td>
 
                       {/* วันที่อัปเดตล่าสุด */}
                       <td className="p-4 text-slate-500 whitespace-nowrap font-mono text-[11px]">
@@ -911,6 +1029,71 @@ export const StaffPortal: React.FC<StaffPortalProps> = ({
                 <span className="text-[11px] text-slate-500 font-mono">
                   {viewingTicket.reporter.phone || viewingTicket.reporter.email || ''}
                 </span>
+              </div>
+
+              {/* LINE OA Staff Notification Details & Retry Panel */}
+              <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200/80 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>{lang === 'th' ? 'การแจ้งเตือน LINE Official Account เจ้าหน้าที่' : 'LINE OA Staff Notification'}</span>
+                  </span>
+                  {viewingTicket.line_notification_status === 'sent' ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>{lang === 'th' ? 'ส่งการแจ้งเตือนเรียบร้อย' : 'Delivered'}</span>
+                    </span>
+                  ) : viewingTicket.line_notification_status === 'failed' ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1">
+                      <XCircle className="w-3 h-3 text-rose-600" />
+                      <span>{lang === 'th' ? 'ส่งไม่สำเร็จ' : 'Failed'}</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-300 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <span>{lang === 'th' ? 'รอดำเนินการ' : 'Pending'}</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600 text-[11px] pt-1">
+                  <div>
+                    <span className="text-slate-500">{lang === 'th' ? 'เวลาที่ส่งแจ้งเตือน:' : 'Sent At:'}</span>{' '}
+                    <span className="font-mono font-bold text-slate-800">
+                      {viewingTicket.line_notification_sent_at || '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">{lang === 'th' ? 'พยายามส่งแล้ว:' : 'Attempts:'}</span>{' '}
+                    <span className="font-mono font-bold text-slate-800">
+                      {viewingTicket.line_retry_count || 1} {lang === 'th' ? 'ครั้ง' : 'times'}
+                    </span>
+                  </div>
+                </div>
+
+                {viewingTicket.line_notification_error && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] space-y-1">
+                    <span className="font-bold block">{lang === 'th' ? 'ข้อความแจ้งเตือนข้อผิดพลาด:' : 'Error details:'}</span>
+                    <p className="font-mono break-all">{viewingTicket.line_notification_error}</p>
+                  </div>
+                )}
+
+                <div className="pt-1 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">
+                    {lang === 'th'
+                      ? 'ส่งเข้ากลุ่ม LINE OA เจ้าหน้าที่สุขาภิบาลสิ่งแวดล้อม'
+                      : 'Delivered to PH Eco Alert Staff LINE Group'}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isRetryingLine === viewingTicket.id}
+                    onClick={() => handleRetryLine(viewingTicket.id)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <RotateCcw className={`w-3 h-3 ${isRetryingLine === viewingTicket.id ? 'animate-spin' : ''}`} />
+                    <span>{lang === 'th' ? 'ส่งการแจ้งเตือน LINE ซ้ำ' : 'Retry LINE Notification'}</span>
+                  </button>
+                </div>
               </div>
             </div>
 

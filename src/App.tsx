@@ -52,12 +52,33 @@ export default function App() {
 
   const [trackerSearchId, setTrackerSearchId] = useState<string>('');
   const [selectedReportCategory, setSelectedReportCategory] = useState<ReportCategory | undefined>(undefined);
+  const [selectedReportSubProblemId, setSelectedReportSubProblemId] = useState<string | undefined>(undefined);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Sync state to localStorage
   useEffect(() => {
     localStorage.setItem('ph_eco_alert_tickets', JSON.stringify(tickets));
   }, [tickets]);
+
+  // Initial fetch from server storage to merge server-persisted reports & LINE statuses
+  useEffect(() => {
+    fetch('/api/reports')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.reports) && data.reports.length > 0) {
+          setTickets((prev) => {
+            const map = new Map<string, Ticket>();
+            prev.forEach((tk) => map.set(tk.id, tk));
+            data.reports.forEach((tk: Ticket) => {
+              const existing = map.get(tk.id);
+              map.set(tk.id, { ...(existing || {}), ...tk });
+            });
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch((err) => console.warn('Could not sync initial tickets from server:', err));
+  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -144,8 +165,9 @@ export default function App() {
     );
   };
 
-  const handleOpenReportWithCategory = (cat?: ReportCategory) => {
+  const handleOpenReportWithCategory = (cat?: ReportCategory, subIdOrCode?: string) => {
     setSelectedReportCategory(cat);
+    setSelectedReportSubProblemId(subIdOrCode);
     setActiveTab('report');
   };
 
@@ -173,6 +195,7 @@ export default function App() {
         onSelectTab={(tab) => {
           if (tab === 'report') {
             setSelectedReportCategory(undefined);
+            setSelectedReportSubProblemId(undefined);
           }
           setActiveTab(tab);
         }}
@@ -185,6 +208,7 @@ export default function App() {
         onOpenEmergencyModal={() => setIsEmergencyModalOpen(true)}
         onOpenReportModal={() => {
           setSelectedReportCategory(undefined);
+          setSelectedReportSubProblemId(undefined);
           setActiveTab('report');
         }}
         onStaffLogout={() => {
@@ -237,9 +261,14 @@ export default function App() {
             lang={lang}
             currentUser={currentUser}
             initialCategory={selectedReportCategory}
+            initialSubProblemId={selectedReportSubProblemId}
             onSubmitReport={handleAddTicket}
             onNavigateToTrack={handleNavigateToTrack}
-            onCancel={() => setActiveTab('home')}
+            onCancel={() => {
+              setSelectedReportCategory(undefined);
+              setSelectedReportSubProblemId(undefined);
+              setActiveTab('home');
+            }}
           />
         )}
 

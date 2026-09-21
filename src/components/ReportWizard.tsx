@@ -45,6 +45,10 @@ import {
   PublicHealthSpot,
 } from '../utils/geofence';
 import { getSubProblemsForCategory, findSubProblemById } from '../subProblems';
+import {
+  ENVIRONMENTAL_CATEGORIES,
+  resolveCategoryAndSubcategory,
+} from '../constants/categories';
 import { MapPicker } from './MapPicker';
 import { PhotoUpload } from './PhotoUpload';
 
@@ -54,6 +58,8 @@ interface ReportWizardProps {
   lang: Language;
   currentUser?: UserProfile;
   initialCategory?: ReportCategory;
+  initialSubProblemId?: string;
+  initialSubcategory?: string;
   onSubmitReport: (newTicket: Ticket) => void;
   onNavigateToTrack: (ticketId: string) => void;
   onCancel: () => void;
@@ -63,6 +69,8 @@ export const ReportWizard: React.FC<ReportWizardProps> = ({
   lang,
   currentUser,
   initialCategory,
+  initialSubProblemId,
+  initialSubcategory,
   onSubmitReport,
   onNavigateToTrack,
   onCancel,
@@ -75,19 +83,41 @@ export const ReportWizard: React.FC<ReportWizardProps> = ({
   const [submittedTicket, setSubmittedTicket] = useState<Ticket | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  // Resolve initial category & subcategory from props if supplied from Home page
+  const initialResolved = resolveCategoryAndSubcategory(
+    initialCategory,
+    initialSubProblemId || initialSubcategory
+  );
+
   // 1. Incident Details State
-  const [category, setCategory] = useState<ReportCategory>(initialCategory || 'infrastructure_utilities');
+  const [category, setCategory] = useState<ReportCategory>(initialResolved.category);
   const [subProblems, setSubProblems] = useState<SubProblemOption[]>(() =>
-    getSubProblemsForCategory(initialCategory || 'infrastructure_utilities')
+    getSubProblemsForCategory(initialResolved.category)
   );
   const [selectedSubProblemId, setSelectedSubProblemId] = useState<string>(() => {
-    const list = getSubProblemsForCategory(initialCategory || 'infrastructure_utilities');
-    return list.length > 0 ? list[0].id : '';
+    return (
+      initialResolved.subProblemId ||
+      (getSubProblemsForCategory(initialResolved.category)[0]?.id || '')
+    );
   });
   const [customProblemText, setCustomProblemText] = useState<string>('');
   const [incidentTitle, setIncidentTitle] = useState<string>('');
   const [incidentDescription, setIncidentDescription] = useState<string>('');
   const [photoBase64, setPhotoBase64] = useState<string | undefined>(undefined);
+
+  // Sync if initial props change (e.g. user chooses a different category from home)
+  useEffect(() => {
+    if (initialCategory || initialSubProblemId || initialSubcategory) {
+      const res = resolveCategoryAndSubcategory(
+        initialCategory,
+        initialSubProblemId || initialSubcategory
+      );
+      setCategory(res.category);
+      if (res.subProblemId) {
+        setSelectedSubProblemId(res.subProblemId);
+      }
+    }
+  }, [initialCategory, initialSubProblemId, initialSubcategory]);
 
   // 2. Reporter Information & Privacy State
   const [reporterType, setReporterType] = useState<ReporterType>('student');
@@ -125,97 +155,38 @@ export const ReportWizard: React.FC<ReportWizardProps> = ({
     }
   }, [category]);
 
-  const categoriesConfig: Array<{
-    id: ReportCategory;
-    titleTh: string;
-    titleEn: string;
-    descTh: string;
-    descEn: string;
-    icon: React.ReactNode;
-    color: string;
-  }> = [
-    {
-      id: 'infrastructure_utilities',
-      titleTh: 'ระบบสาธารณูปโภค',
-      titleEn: 'Infrastructure & Utilities',
-      descTh: 'ปัญหาที่เกี่ยวข้องกับอาคาร ระบบไฟฟ้า ระบบสาธารณูปโภค และระบบระบายน้ำภายในพื้นที่',
-      descEn: 'Building damage, electrical systems, utilities, and drainage',
-      icon: <Wrench className="w-5 h-5 text-amber-600" />,
-      color: 'border-amber-200 hover:border-amber-400 bg-amber-50/50',
-    },
-    {
-      id: 'traffic',
-      titleTh: 'การจราจร',
-      titleEn: 'Traffic',
-      descTh: 'ปัญหาที่เกี่ยวข้องกับการจราจร การเดินทาง และความปลอดภัยในการใช้เส้นทางภายในพื้นที่',
-      descEn: 'Traffic congestion, accidents, and traffic signals',
-      icon: <Car className="w-5 h-5 text-indigo-600" />,
-      color: 'border-indigo-200 hover:border-indigo-400 bg-indigo-50/50',
-    },
-    {
-      id: 'water',
-      titleTh: 'คุณภาพน้ำ / น้ำเสีย',
-      titleEn: 'Water Quality / Wastewater',
-      descTh: 'น้ำขัง ท่อตัน กลิ่นน้ำเน่า รั่วซึม',
-      descEn: 'Flooding, leaks, odor, blockages',
-      icon: <Droplets className="w-5 h-5 text-blue-500" />,
-      color: 'border-blue-200 hover:border-blue-400 bg-blue-50/50',
-    },
-    {
-      id: 'air',
-      titleTh: 'มลพิษอากาศ / ฝุ่นควัน',
-      titleEn: 'Air Pollution / PM2.5',
-      descTh: 'ฝุ่น ควัน สารเคมี ไอระเหย',
-      descEn: 'Dust, smoke, chemical fumes',
-      icon: <Wind className="w-5 h-5 text-sky-500" />,
-      color: 'border-sky-200 hover:border-sky-400 bg-sky-50/50',
-    },
-    {
-      id: 'noise',
-      titleTh: 'เสียงดังรบกวน',
-      titleEn: 'Noise Disturbance',
-      descTh: 'เสียงเครื่องจักร เสียงก่อสร้าง',
-      descEn: 'Construction, machine noise',
-      icon: <Volume2 className="w-5 h-5 text-amber-500" />,
-      color: 'border-amber-200 hover:border-amber-400 bg-amber-50/50',
-    },
-    {
-      id: 'odor',
-      titleTh: 'กลิ่นเหม็น / สารเคมี',
-      titleEn: 'Odor / Gas Leak',
-      descTh: 'กลิ่นขยะ กลิ่นสารเคมี แก๊สรั่ว',
-      descEn: 'Garbage, chemical, gas odors',
-      icon: <Biohazard className="w-5 h-5 text-purple-500" />,
-      color: 'border-purple-200 hover:border-purple-400 bg-purple-50/50',
-    },
-    {
-      id: 'waste',
-      titleTh: 'ขยะ / สิ่งปฏิกูล',
-      titleEn: 'Waste & Sanitation',
-      descTh: 'ขยะล้นถัง ขยะติดเชื้อ จุดทิ้งขยะ',
-      descEn: 'Overflowing bins, hazardous waste',
-      icon: <Trash2 className="w-5 h-5 text-emerald-500" />,
-      color: 'border-emerald-200 hover:border-emerald-400 bg-emerald-50/50',
-    },
-    {
-      id: 'vector',
-      titleTh: 'พาหะนำโรค / สัตว์มีพิษ',
-      titleEn: 'Vectors & Poisonous Animals',
-      descTh: 'ยุงลาย งู ต่อ แตน สัตว์จรจัด',
-      descEn: 'Mosquitoes, snakes, wasps, strays',
-      icon: <Bug className="w-5 h-5 text-rose-500" />,
-      color: 'border-rose-200 hover:border-rose-400 bg-rose-50/50',
-    },
-    {
-      id: 'others',
-      titleTh: 'ปัญหาอื่นๆ',
-      titleEn: 'Other Environmental Issues',
-      descTh: 'กิ่งไม้หัก แสงสว่าง ทางเดินชำรุด',
-      descEn: 'Broken walkways, lighting, trees',
-      icon: <HelpCircle className="w-5 h-5 text-slate-500" />,
-      color: 'border-slate-200 hover:border-slate-400 bg-slate-50/50',
-    },
-  ];
+  const getCategoryIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'wrench':
+        return <Wrench className="w-5 h-5 text-amber-600" />;
+      case 'car':
+        return <Car className="w-5 h-5 text-indigo-600" />;
+      case 'droplets':
+        return <Droplets className="w-5 h-5 text-blue-500" />;
+      case 'wind':
+        return <Wind className="w-5 h-5 text-sky-500" />;
+      case 'volume2':
+        return <Volume2 className="w-5 h-5 text-amber-500" />;
+      case 'biohazard':
+        return <Biohazard className="w-5 h-5 text-purple-500" />;
+      case 'trash2':
+        return <Trash2 className="w-5 h-5 text-emerald-500" />;
+      case 'bug':
+        return <Bug className="w-5 h-5 text-rose-500" />;
+      default:
+        return <HelpCircle className="w-5 h-5 text-slate-500" />;
+    }
+  };
+
+  const categoriesConfig = ENVIRONMENTAL_CATEGORIES.map((cat) => ({
+    id: cat.id,
+    titleTh: cat.name,
+    titleEn: cat.nameEn,
+    descTh: cat.descTh,
+    descEn: cat.descEn,
+    icon: getCategoryIcon(cat.iconName),
+    color: `${cat.activeBorder} ${cat.activeBg}`,
+  }));
 
   const handleSpotSelect = (spotId: string) => {
     const spot = FACULTY_PH_SPOTS.find((s) => s.id === spotId);
@@ -323,7 +294,7 @@ export const ReportWizard: React.FC<ReportWizardProps> = ({
   };
 
   // Final Submission
-  const handleSubmitReport = () => {
+  const handleSubmitReport = async () => {
     setIsSubmitting(true);
 
     const now = new Date();
@@ -429,12 +400,47 @@ export const ReportWizard: React.FC<ReportWizardProps> = ({
       ],
     };
 
-    setTimeout(() => {
-      onSubmitReport(newTicket);
-      setSubmittedTicket(newTicket);
-      setIsSubmitting(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 600);
+    let finalTicket: Ticket = {
+      ...newTicket,
+      line_notification_status: 'pending',
+    };
+
+    try {
+      const response = await fetch('/api/reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newTicket),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.report) {
+          finalTicket = {
+            ...newTicket,
+            ...data.report,
+            line_notification_status:
+              data.lineNotification?.status ||
+              data.report?.line_notification_status ||
+              'failed',
+            line_notification_sent_at:
+              data.lineNotification?.sentAt || data.report?.line_notification_sent_at,
+            line_notification_error:
+              data.lineNotification?.error || data.report?.line_notification_error,
+          };
+        }
+      } else {
+        console.warn('Backend returned non-OK status for report creation:', response.status);
+      }
+    } catch (apiErr) {
+      console.warn('Backend API request error, proceeding with local fallback:', apiErr);
+    }
+
+    onSubmitReport(finalTicket);
+    setSubmittedTicket(finalTicket);
+    setIsSubmitting(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCopyTicket = (ticketId: string) => {
@@ -493,6 +499,18 @@ export const ReportWizard: React.FC<ReportWizardProps> = ({
               : 'You can use this Report ID to track progress anytime without logging in.'}
           </p>
         </div>
+
+        {/* LINE OA Dispatch Status */}
+        {submittedTicket.line_notification_status === 'sent' && (
+          <div className="flex items-center justify-center gap-2 text-xs font-semibold text-emerald-800 bg-emerald-50/90 px-4 py-2.5 rounded-2xl border border-emerald-200 max-w-md mx-auto shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>
+              {lang === 'th'
+                ? 'ส่งการแจ้งเตือนไปยัง LINE OA เจ้าหน้าที่เรียบร้อยแล้ว'
+                : 'Dispatched notification to Staff LINE Official Account'}
+            </span>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2 max-w-md mx-auto">
